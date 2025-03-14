@@ -46,6 +46,10 @@
         .hidden {
             display: none;
         }
+        #debug {
+            color: red;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -57,6 +61,7 @@
             <p>选择你的角色：</p>
             <button onclick="selectRole('playerA')">玩家 A（创建游戏）</button>
             <button onclick="selectRole('playerB')">玩家 B（加入游戏）</button>
+            <div id="debug"></div>
         </div>
 
         <!-- 玩家 A：创建游戏 -->
@@ -109,15 +114,16 @@
         </div>
     </div>
 
-    <!-- 引入 Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+    <!-- 引入 Firebase SDK（本地文件） -->
+    <script src="firebase-app.js"></script>
+    <script src="firebase-database.js"></script>
 
     <script>
-        // 你的 Firebase 配置
+        // 你的 Firebase 配置（已更新 databaseURL）
         const firebaseConfig = {
             apiKey: "AIzaSyDHs8VqhlnbbKc_u2R91ZIaZo5IYAkkeqg",
             authDomain: "guess-number-game-907ee.firebaseapp.com",
+            databaseURL: "https://guess-number-game-907ee-default-rtdb.asia-southeast1.firebasedatabase.app",
             projectId: "guess-number-game-907ee",
             storageBucket: "guess-number-game-907ee.firebasestorage.app",
             messagingSenderId: "1025649087949",
@@ -126,8 +132,15 @@
         };
 
         // 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.database();
+            console.log("Firebase 初始化成功");
+            document.getElementById('debug').textContent = "Firebase 初始化成功";
+        } catch (error) {
+            console.error("Firebase 初始化失败:", error);
+            document.getElementById('debug').textContent = "Firebase 初始化失败: " + error.message;
+        }
 
         let playerRole = null; // 玩家角色：playerA 或 playerB
         let roomId = null; // 房间号
@@ -143,6 +156,7 @@
             } else {
                 document.getElementById('playerBJoin').classList.remove('hidden');
             }
+            console.log(`选择了角色: ${role}`);
         }
 
         // 玩家 A 创建游戏
@@ -173,10 +187,14 @@
                     guesses: []
                 },
                 gameOver: false
+            }).then(() => {
+                document.getElementById('playerACreate').classList.add('hidden');
+                startGame();
+                console.log(`创建游戏成功，房间号: ${roomId}`);
+            }).catch((error) => {
+                console.error("创建游戏失败:", error);
+                document.getElementById('debug').textContent = "创建游戏失败: " + error.message;
             });
-
-            document.getElementById('playerACreate').classList.add('hidden');
-            startGame();
         }
 
         // 玩家 B 加入游戏
@@ -190,9 +208,14 @@
                     document.getElementById('playerBDigitCount').textContent = digitCount;
                     document.getElementById('playerBJoin').classList.add('hidden');
                     document.getElementById('playerBSetTarget').classList.remove('hidden');
+                    console.log(`加入游戏成功，房间号: ${roomId}`);
                 } else {
                     alert('房间号不存在');
+                    console.log("房间号不存在");
                 }
+            }).catch((error) => {
+                console.error("加入游戏失败:", error);
+                document.getElementById('debug').textContent = "加入游戏失败: " + error.message;
             });
         }
 
@@ -205,9 +228,14 @@
             }
 
             const playerBRef = firebase.database().ref(`games/${roomId}/playerB/target`);
-            playerBRef.set(myTarget);
-            document.getElementById('playerBSetTarget').classList.add('hidden');
-            startGame();
+            playerBRef.set(myTarget).then(() => {
+                document.getElementById('playerBSetTarget').classList.add('hidden');
+                startGame();
+                console.log("设置目标数字成功");
+            }).catch((error) => {
+                console.error("设置目标数字失败:", error);
+                document.getElementById('debug').textContent = "设置目标数字失败: " + error.message;
+            });
         }
 
         // 开始游戏
@@ -248,13 +276,21 @@
                     if (!latestGuess.hits && gameData[opponent].target) {
                         const hits = calculateHits(latestGuess.guess, gameData[opponent].target);
                         const guessRef = firebase.database().ref(`games/${roomId}/${opponent}/guesses/${opponentGuesses.length - 1}`);
-                        guessRef.update({ hits: hits });
+                        guessRef.update({ hits: hits }).then(() => {
+                            console.log(`计算命中成功: ${hits}`);
+                        }).catch((error) => {
+                            console.error("计算命中失败:", error);
+                        });
 
                         // 检查是否胜利
                         if (hits === digitCount) {
                             gameRef.update({
                                 gameOver: true,
                                 winner: opponent
+                            }).then(() => {
+                                console.log("游戏结束，获胜者: " + opponent);
+                            }).catch((error) => {
+                                console.error("更新游戏结束状态失败:", error);
                             });
                         }
                     }
@@ -271,8 +307,13 @@
             }
 
             const guessesRef = firebase.database().ref(`games/${roomId}/${playerRole}/guesses`);
-            guessesRef.push({ guess: guess, hits: null });
-            document.getElementById('guessInput').value = '';
+            guessesRef.push({ guess: guess, hits: null }).then(() => {
+                document.getElementById('guessInput').value = '';
+                console.log(`提交猜测: ${guess}`);
+            }).catch((error) => {
+                console.error("提交猜测失败:", error);
+                document.getElementById('debug').textContent = "提交猜测失败: " + error.message;
+            });
         }
 
         // 计算命中个数
@@ -299,11 +340,13 @@
             resultText += `玩家 B 的目标数字: ${playerBTarget}\n`;
             resultText += `获胜者: ${winner || '无'}`;
             document.getElementById('gameResult').textContent = resultText;
+            console.log("游戏结束");
         }
 
         // 重新开始
         function restartGame() {
             window.location.reload();
+            console.log("重新开始");
         }
     </script>
 </body>
