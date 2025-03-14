@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猜数字游戏</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        input, button {
+            padding: 10px;
+            margin: 5px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #history {
+            margin-top: 20px;
+            text-align: left;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>猜数字游戏</h2>
+
+        <!-- 玩家身份选择 -->
+        <div id="roleSelection">
+            <p>选择你的角色：</p>
+            <button onclick="selectRole('playerA')">玩家 A（创建游戏）</button>
+            <button onclick="selectRole('playerB')">玩家 B（加入游戏）</button>
+        </div>
+
+        <!-- 玩家 A：创建游戏 -->
+        <div id="playerACreate" class="hidden">
+            <p>玩家 A：创建游戏</p>
+            <label>选择数字位数（2-9）：</label>
+            <input type="number" id="digitCount" min="2" max="9" value="2">
+            <br>
+            <label>输入你的目标数字：</label>
+            <input type="text" id="playerATarget">
+            <br>
+            <button onclick="createGame()">创建游戏</button>
+        </div>
+
+        <!-- 玩家 B：加入游戏 -->
+        <div id="playerBJoin" class="hidden">
+            <p>玩家 B：加入游戏</p>
+            <label>输入房间号：</label>
+            <input type="text" id="roomIdInput">
+            <br>
+            <button onclick="joinGame()">加入游戏</button>
+        </div>
+
+        <!-- 玩家 B：设置目标数字 -->
+        <div id="playerBSetTarget" class="hidden">
+            <p>玩家 B：房间位数：<span id="playerBDigitCount"></span></p>
+            <label>输入你的目标数字：</label>
+            <input type="text" id="playerBTarget">
+            <br>
+            <button onclick="setPlayerBTarget()">确认目标数字</button>
+        </div>
+
+        <!-- 游戏主界面 -->
+        <div id="game" class="hidden">
+            <p id="roomInfo"></p>
+            <p id="status"></p>
+            <label>你的猜测：</label>
+            <input type="text" id="guessInput">
+            <button onclick="submitGuess()">提交猜测</button>
+            <div id="history">
+                <h3>猜测历史</h3>
+                <ul id="guessHistory"></ul>
+            </div>
+        </div>
+
+        <!-- 游戏结束 -->
+        <div id="gameOver" class="hidden">
+            <p id="gameResult"></p>
+            <button onclick="restartGame()">重新开始</button>
+        </div>
+    </div>
+
+    <!-- 引入 Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js"></script>
+
+    <script>
+        // 你的 Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyDHs8VqhlnbbKc_u2R91ZIaZo5IYAkkeqg",
+            authDomain: "guess-number-game-907ee.firebaseapp.com",
+            projectId: "guess-number-game-907ee",
+            storageBucket: "guess-number-game-907ee.firebasestorage.app",
+            messagingSenderId: "1025649087949",
+            appId: "1:1025649087949:web:c0ead4b73c4ed2f9ab6084",
+            measurementId: "G-9WXCVVYRBX"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let playerRole = null; // 玩家角色：playerA 或 playerB
+        let roomId = null; // 房间号
+        let digitCount = null; // 数字位数
+        let myTarget = null; // 我的目标数字
+
+        // 选择角色
+        function selectRole(role) {
+            playerRole = role;
+            document.getElementById('roleSelection').classList.add('hidden');
+            if (role === 'playerA') {
+                document.getElementById('playerACreate').classList.remove('hidden');
+            } else {
+                document.getElementById('playerBJoin').classList.remove('hidden');
+            }
+        }
+
+        // 玩家 A 创建游戏
+        function createGame() {
+            digitCount = parseInt(document.getElementById('digitCount').value);
+            myTarget = document.getElementById('playerATarget').value;
+
+            if (digitCount < 2 || digitCount > 9) {
+                alert('位数必须在 2-9 之间');
+                return;
+            }
+            if (!/^\d+$/.test(myTarget) || myTarget.length !== digitCount) {
+                alert(`请输入 ${digitCount} 位数字`);
+                return;
+            }
+
+            // 生成随机房间号
+            roomId = Math.floor(1000 + Math.random() * 9000).toString();
+            const gameRef = firebase.database().ref(`games/${roomId}`);
+            gameRef.set({
+                digitCount: digitCount,
+                playerA: {
+                    target: myTarget,
+                    guesses: []
+                },
+                playerB: {
+                    target: null,
+                    guesses: []
+                },
+                gameOver: false
+            });
+
+            document.getElementById('playerACreate').classList.add('hidden');
+            startGame();
+        }
+
+        // 玩家 B 加入游戏
+        function joinGame() {
+            roomId = document.getElementById('roomIdInput').value;
+            const gameRef = firebase.database().ref(`games/${roomId}`);
+            gameRef.once('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    const gameData = snapshot.val();
+                    digitCount = gameData.digitCount;
+                    document.getElementById('playerBDigitCount').textContent = digitCount;
+                    document.getElementById('playerBJoin').classList.add('hidden');
+                    document.getElementById('playerBSetTarget').classList.remove('hidden');
+                } else {
+                    alert('房间号不存在');
+                }
+            });
+        }
+
+        // 玩家 B 设置目标数字
+        function setPlayerBTarget() {
+            myTarget = document.getElementById('playerBTarget').value;
+            if (!/^\d+$/.test(myTarget) || myTarget.length !== digitCount) {
+                alert(`请输入 ${digitCount} 位数字`);
+                return;
+            }
+
+            const playerBRef = firebase.database().ref(`games/${roomId}/playerB/target`);
+            playerBRef.set(myTarget);
+            document.getElementById('playerBSetTarget').classList.add('hidden');
+            startGame();
+        }
+
+        // 开始游戏
+        function startGame() {
+            document.getElementById('game').classList.remove('hidden');
+            document.getElementById('roomInfo').textContent = `房间号: ${roomId}`;
+            document.getElementById('status').textContent = `你 (${playerRole}) 的目标数字: ${myTarget}`;
+
+            // 监听游戏状态
+            const gameRef = firebase.database().ref(`games/${roomId}`);
+            gameRef.on('value', (snapshot) => {
+                const gameData = snapshot.val();
+                if (!gameData) return;
+
+                // 检查游戏是否结束
+                if (gameData.gameOver) {
+                    endGame(gameData);
+                    return;
+                }
+
+                // 获取对手的猜测
+                const opponent = playerRole === 'playerA' ? 'playerB' : 'playerA';
+                const opponentGuesses = gameData[opponent].guesses || [];
+                const myGuesses = gameData[playerRole].guesses || [];
+
+                // 更新猜测历史
+                const historyList = document.getElementById('guessHistory');
+                historyList.innerHTML = '';
+                myGuesses.forEach((guess, index) => {
+                    const li = document.createElement('li');
+                    li.textContent = `猜测 ${index + 1}: ${guess.guess} -> 命中 ${guess.hits || '未反馈'}`;
+                    historyList.appendChild(li);
+                });
+
+                // 检查对手的最新猜测并计算命中
+                if (opponentGuesses.length > 0) {
+                    const latestGuess = opponentGuesses[opponentGuesses.length - 1];
+                    if (!latestGuess.hits && gameData[opponent].target) {
+                        const hits = calculateHits(latestGuess.guess, gameData[opponent].target);
+                        const guessRef = firebase.database().ref(`games/${roomId}/${opponent}/guesses/${opponentGuesses.length - 1}`);
+                        guessRef.update({ hits: hits });
+
+                        // 检查是否胜利
+                        if (hits === digitCount) {
+                            gameRef.update({
+                                gameOver: true,
+                                winner: opponent
+                            });
+                        }
+                    }
+                }
+            });
+        }
+
+        // 提交猜测
+        function submitGuess() {
+            const guess = document.getElementById('guessInput').value;
+            if (!/^\d+$/.test(guess) || guess.length !== digitCount) {
+                alert(`请输入 ${digitCount} 位数字`);
+                return;
+            }
+
+            const guessesRef = firebase.database().ref(`games/${roomId}/${playerRole}/guesses`);
+            guessesRef.push({ guess: guess, hits: null });
+            document.getElementById('guessInput').value = '';
+        }
+
+        // 计算命中个数
+        function calculateHits(guess, target) {
+            let hits = 0;
+            for (let i = 0; i < guess.length; i++) {
+                if (guess[i] === target[i]) {
+                    hits++;
+                }
+            }
+            return hits;
+        }
+
+        // 游戏结束
+        function endGame(gameData) {
+            document.getElementById('game').classList.add('hidden');
+            document.getElementById('gameOver').classList.remove('hidden');
+
+            const winner = gameData.winner;
+            const playerATarget = gameData.playerA.target;
+            const playerBTarget = gameData.playerB.target;
+            let resultText = `游戏结束！\n`;
+            resultText += `玩家 A 的目标数字: ${playerATarget}\n`;
+            resultText += `玩家 B 的目标数字: ${playerBTarget}\n`;
+            resultText += `获胜者: ${winner || '无'}`;
+            document.getElementById('gameResult').textContent = resultText;
+        }
+
+        // 重新开始
+        function restartGame() {
+            window.location.reload();
+        }
+    </script>
+</body>
+</html>
